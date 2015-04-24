@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<script type="text/javascript">
+	
+function Observer(iterator) {
+	this.iterator = iterator;
+
+	if(!this.iterator) {
+		this.onNext = function() {};
+		this.onError = function() {};
+		this.onComplete = function() {};
+	}
+	else {
+		if(typeof iterator['onNext'] == 'function') {
+			this.onNext = iterator['onNext'];
+		}
+		else if(typeof iterator == 'function') {
+			this.onNext = iterator;
+		}
+		else {
+			this.onNext = function() {};
+		}
+
+		this.onError = (typeof iterator['onError'] == 'function') ? iterator['onError'] : function(e) {
+			if(console && console.log) 
+				console.log('Observer Error: ' + e);
+		};
+		this.onComplete = (typeof iterator['onComplete'] == 'function') ? iterator['oncComplete'] : function() {};
+	}
+}
+
+Observer.create = function(iterator) {
+	if(	typeof iterator['onNext'] == 'function' && 
+		typeof iterator['onComplete'] == 'function' && 
+		typeof iterator['onError'] == 'function') {
+
+		return iterator;
+	}
+	else return new Observer(iterator);
+}
+
+
+Array.prototype.forEach = function(iterator) {
+	if(typeof iterator != 'function') return;
+
+	var o = Observer.create(iterator);
+
+	for(var i = 0; i < this.length; i++) {
+		try {
+			o.onNext(this[i], i);
+		} catch(e) {
+			o.onError(e, i);
+		}
+	}
+
+	o.onComplete(this.length);
+}
+
+function min() {
+	if(arguments.length == 0) return null;
+
+	var pred = function(a,b) { return a < b; };
+	var i = 0;
+
+	/* if the first argument is a function, it should be treated as the LESS predicate */
+	if(typeof arguments[0] == 'function') {
+		pred = arguments[0];
+		i++;
+
+		if(arguments.length <= 1) return null;
+	}
+
+	var m = arguments[i++];
+	for(; i < arguments.length; i++) {
+		if(pred(arguments[i], m)) 
+			m = arguments[i];
+	}
+
+	return m;
+}
+function max() {
+	if(arguments.length == 0) return null;
+
+	var pred = function(a,b) { return a < b; };
+	var i = 0;
+
+	/* if the first argument is a function, it should be treated as the LESS predicate */
+	if(typeof arguments[0] == 'function') {
+		pred = arguments[0];
+		i++;
+
+		if(arguments.length <= 1) return null;
+	}
+
+	var m = arguments[0];
+	for(var i = 1; i < arguments.length; i++) {
+		if(pred(m, arguments[i])) 
+			m = arguments[i];
+	}
+
+	return m;
+}
+
+function onload() {
+	var canvas = document.getElementById('canvas');
+	var background = document.getElementById('background');
+	var clear = document.getElementById('clear');
+
+	var ctx = canvas.getContext('2d');
+	var btx = background.getContext('2d');
+
+	clear.addEventListener('click', function() {
+		btx.clearRect(0,0,1024,1024);
+	})
+
+
+	var particles = [
+	
+		// { x: 50, y: 50, m: 200, dx: 0, dy: -2 },
+		// { x: 150, y: 50, m: 1000, dx: 0, dy: 2 },
+		{ x: 640, y: 480, m: 20000, dx: 0, dy: 0 },
+		//{ x: 250, y: 50, m: 70, dx: 1, dy: 2 },
+		//{ x: 750, y: 480, m: 100, dx: 0, dy: 5.4},
+		{ x: -140, y: 480, m: 1000, dx: 0, dy: -120}
+		/*
+		{ x: 150, y: 150, m: 20, dx: -1, dy: -2 },
+		{ x: 150, y: 700, m: 40, dx: 2, dy: 2 },
+		{ x: 10, y: 100, m: 50, dx: 1, dy: 3 }
+		*/
+	];
+
+	
+	var m = particles[0].m;
+	var cx = particles[0].x * m; 
+	var cy = particles[0].y * m;
+	var cdx = particles[0].dx * m; 
+	var cdy = particles[0].dy * m;
+	var zoom = 0.5;
+	var framerate = 50;
+	
+	var v2 = particles[0].dx * particles[0].dx + 
+				particles[0].dy * particles[0].dy;
+	var energy = 0.5 * particles[0].m * v2;
+	var momentum = particles[0].m * Math.sqrt(v2);
+
+	particles.forEach(function(p, i) {
+		if(i == 0) return;
+
+		cx += p.x * p.m;
+		cy += p.y * p.m;
+		cdx += p.dx * p.m;
+		cdy += p.dy * p.m;
+		m += p.m;
+
+		var v2 = p.dx * p.dx + p.dy * p.dy;
+		energy += 0.5 * p.m * v2;
+		momentum += p.m * Math.sqrt(v2);
+	});
+
+	var last_energy = energy;
+
+	cx /= m;
+	cy /= m;
+	cdx /= m;
+	cdy /= m;
+
+
+	var newParticle = null;
+	canvas.onmousedown = function(e) {
+		newParticle = {
+			x: (e.offsetX - canvas.width / 2) / zoom + cx,
+			y: (e.offsetY - canvas.height / 2) / zoom + cy,
+			m: 100,
+			dx: 0,
+			dy: 0,
+			created: (new Date()).getTime(),
+			refx: (e.offsetX - canvas.width / 2) / zoom + cx,
+			refy: (e.offsetY - canvas.height / 2) / zoom + cy,
+		};
+	}
+	canvas.onmousemove = function(e) {
+		if(newParticle) {
+			newParticle.x = (e.offsetX - canvas.width / 2) / zoom + cx;
+			newParticle.y = (e.offsetY - canvas.height / 2) / zoom + cy;
+		}
+	}
+	canvas.onmouseup = function(e) {
+		var dt = (new Date()).getTime() - newParticle.created;
+
+		var nx = (e.offsetX - canvas.width / 2) / zoom + cx,
+			ny = (e.offsetY - canvas.height / 2) / zoom + cy;
+
+		newParticle.dx = (nx - newParticle.refx) / dt * 200 / zoom;
+		newParticle.dy = (ny - newParticle.refy) / dt * 200 / zoom;
+		newParticle.x = nx;
+		newParticle.y = ny;
+
+		particles.push(newParticle);
+		newParticle = null;
+	}
+
+	var scale = 1.0;
+
+
+	var frame = 0;
+	setInterval(function() {
+		// first calculate the center of mass and adjust the system
+		
+		if(!newParticle) {
+			last_cx = cx;
+			last_cy = cy;
+
+			var p = particles[0];
+
+			m = p.m;
+			cx = p.x * m; 
+			cy = p.y * m;
+			cdx = p.dx * m; 
+			cdy = p.dy * m;
+
+			p.v2 = p.dx * p.dx + p.dy * p.dy;
+			p.v = Math.sqrt(p.v2);
+			p.energy = 0.5 * p.m * p.v2;
+			p.momentum = p.m * p.v;
+			energy = p.energy;
+			momentum = p.momentum;
+
+			particles.forEach(function(p, i) {
+				if(i == 0) return;
+
+				cx += p.x * p.m;
+				cy += p.y * p.m;
+				cdx += p.dx * p.m;
+				cdy += p.dy * p.m;
+				m += p.m;
+
+				p.v2 = p.dx * p.dx + p.dy * p.dy;
+				p.v = Math.sqrt(p.v2);
+				p.energy = 0.5 * p.m * p.v2;
+				p.momentum = p.m * p.v;
+				energy += p.energy;
+				momentum += p.momentum;
+			});
+
+			var delta_energy = last_energy - energy;
+			
+			
+
+			cx /= m;
+			cy /= m;
+			cdx /= m;
+			cdy /= m;
+
+
+			/*
+			// position cx at the cetner of the canvas
+			particles.forEach(function(p, i) {
+				p.x -= (cx - canvas.width / 2);
+				p.y -= (cy - canvas.height / 2);
+				p.dx -= cdx;
+				p.dy -= cdy;
+			});
+			*/
+
+			var removed = false;
+			var outofbounds = false;
+
+			// each item should feel the force near the center of mass
+			particles.forEach(function(p, i) {
+				var ddx = 0;
+				var ddy = 0;
+
+				if((p.x - cx)*(p.x - cx) + (p.y - cy - p.y - cy) > 100000000) {
+					// mark p for removal
+					p.removed = true;
+					outofbounds = true;
+					return;
+				}
+
+				var r = Math.sqrt(p.m) / 3;
+
+				particles.forEach(function(q, j) {
+					if(i == j) return;
+
+					var sx = q.x - p.x;
+					var sy = q.y - p.y;
+
+					var d2 = sx*sx + sy*sy;
+					var d = Math.sqrt(d2);
+
+					if(d < Math.max(r + Math.sqrt(q.m) / 3, 5)) {
+						if(p.m > q.m) {
+							p.dx += q.dx * q.m / p.m;
+							p.dy += q.dy * q.m / p.m;
+							p.m += q.m;
+							q.removed = true;
+						}
+					}
+
+					var a = 720 * q.m / d2;
+
+					ddx += a * sx / d;
+					ddy += a * sy / d;
+				});
+
+				/*
+				// what is the center of mass without me?
+				var ccx = (cx * m - p.x * p.m) / (m - p.m);
+				var ccy = (cy * m - p.y * p.m) / (m - p.m);
+				var ccm = m - p.m;
+
+				var x = (p.x - ccx);
+				var dy = (p.y - ccy);
+				
+				var d2 = dx * dx + dy * dy;
+				var d = Math.sqrt(d2);
+				var a = 0.2 * ccm / d2;
+				
+				p.dx -= 1 * a * dx / d + cdx;
+				p.dy -= 1 * a * dy / d + cdy;
+				*/
+				p.x += p.dx / framerate;
+				p.y += p.dy / framerate;
+
+				p.dx += ddx / framerate;
+				p.dy += ddy / framerate;
+			});
+
+			particles.forEach(function(p, i) {
+				if(p.removed) {
+					delete particles[i];
+					removed = true;
+				}
+			});
+
+
+			if(removed) {
+				var pp = new Array();
+
+				particles.forEach(function(p) {
+					if(p) pp.push(p);
+				});
+
+				particles = pp;
+			}
+
+			/*
+			if(frame == 10)
+				last_energy = energy;
+
+			if(frame > 10) {
+				//var delta_energy_pp = 1.0001 * delta_energy / particles.length;
+				// add remaining energy inversely proportional to momentum
+				particles.forEach(function(p, i) {
+					if(p.momentum == 0) return;
+
+					var delta_energy_pp = delta_energy * p.m / m;
+
+					var dv = 0.01 * delta_energy_pp / p.momentum;
+
+					p.dx += dv * p.dx / p.v;
+					p.dy += dv * p.dy / p.v;
+				})
+			}
+			*/
+
+
+	/*
+			particles.forEach(function(p, i) {
+				//console.log('particle: ' + i);
+				particles.forEach(function(q, j) {
+					if(i == j) return;
+
+					var dx = (p.x - q.x);
+					var dy = (p.y - q.y);
+
+					var d2 = max(dx * dx + dy * dy, 20);
+					var d = Math.sqrt(d2);
+					var f = 0.03 * p.m * q.m / d2;
+
+					p.x += p.dx;
+					p.y += p.dy;
+
+					if(frame % 2 == 0) {
+						p.dx -= 2.0 * f * dx / d / p.m;
+						p.dy -= 2.0 * f * dy / d / p.m;
+					}
+
+				});
+
+				ctx.fillStyle = 'black';
+				ctx.beginPath();
+				ctx.arc(p.x, p.y, Math.sqrt(p.m) / 3, 0, 2*Math.PI);
+				ctx.fill();
+			});
+	*/	}
+
+
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+		var p0 = particles[0];
+		particles.forEach(function(p, i) {
+			var tx = canvas.width / 2 + zoom * (p.x - cx);
+			var ty = canvas.height / 2 + zoom * (p.y - cy);
+			var sm = Math.sqrt(p.m);
+
+			ctx.fillStyle = 'black';
+			ctx.beginPath();
+			ctx.arc(tx, ty, zoom * (sm / 3), 0, 2*Math.PI);
+			ctx.fill();
+
+			ctx.fillStyle = 'blue';
+			ctx.font = 'sans-serif 12px';
+			ctx.fillText(Math.sqrt(p.dx * p.dx + p.dy * p.dy).toFixed(2), tx + zoom * (sm/3), ty + zoom*(sm/3));
+
+			if(typeof p.last_tx != 'undefined') {
+				btx.beginPath();
+				btx.moveTo(p.last_tx, p.last_ty);
+				btx.lineTo(tx, ty);
+				btx.stroke();
+			}
+
+			p.last_tx = tx;
+			p.last_ty = ty;
+
+
+
+		});
+
+		if(newParticle) {
+			ctx.fillStyle = 'black';
+			ctx.beginPath();
+			ctx.arc(canvas.width / 2 + zoom*(newParticle.x - cx), canvas.height / 2 + zoom*(newParticle.y - cy), zoom*(Math.sqrt(newParticle.m) / 3), 0, 2*Math.PI);
+			ctx.fill();
+		}
+
+
+		ctx.fillStyle = 'blue';
+		ctx.beginPath();
+		ctx.arc(canvas.width / 2 + cx - cx, canvas.height / 2 + cy - cy, 5, 0, 2*Math.PI);
+		ctx.fill();
+
+		ctx.font = 'sans-serif 12px';
+		ctx.fillText(energy, 10, 10);
+		ctx.fillText(momentum, 10, 20);
+		ctx.fillText(cdx + ', ' + cdy, 10, 30);
+
+		if(outofbounds) btx.clearRect(0,0,1024,1024);
+
+		frame++;
+	}, 1000/framerate);
+}
+
+</script>
+
+<style type="text/css">
+canvas {
+	position: absolute;
+}
+</style>
+
+</head>
+<body onload="onload()">
+
+<canvas id="background" width="1024" height="1024"></canvas>
+<canvas id="canvas" width="1024" height="1024"></canvas>
+
+<input style="position:absolute; top:1030px" value="clear" type="button" id="clear" />
+
+</body>
+
+</html>
